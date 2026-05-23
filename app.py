@@ -356,13 +356,6 @@ def train_region_model():
 
 with tab_region:
     st.subheader("🌍 Ocean Region Predictor")
-    st.markdown(
-        "Based on Q3 of the notebook. A Random Forest trained on movement + gear features "
-        "predicts which of the four global ocean quadrants a vessel is operating in — "
-        "**without using lat/lon directly**. "
-        "Improvements over the notebook: trip-based train/test split (no leakage), "
-        "enriched feature set including distance from shore/port, season, and all rolling windows."
-    )
 
     with st.spinner("Training region model on first load (cached after)…"):
         rf_region, report, acc, cm, fi = train_region_model()
@@ -373,8 +366,7 @@ with tab_region:
 
     col_acc, col_nb = st.columns([1, 2])
     with col_acc:
-        st.metric("Accuracy", f"{acc:.1%}", delta=f"+{acc - 0.61:.1%} vs notebook baseline")
-        st.caption("Notebook (random split) achieved ~61%. Trip-based split + richer features → 82%.")
+        st.metric("Accuracy", f"{acc:.1%}")
 
     with col_nb:
         regions = list(REGION_COLORS.keys())
