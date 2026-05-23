@@ -526,34 +526,80 @@ with tab_region:
         )
         st.plotly_chart(fig_prob, use_container_width=True)
 
-    # ── Mini world map showing predicted region ────────────────────────────
+    # ── World map showing predicted region ────────────────────────────────
     st.markdown("**Predicted location on globe**")
-    map_data = []
+    map_rows = []
     for region, (lat, lon) in REGION_COORDS.items():
-        map_data.append({
-            "region": region,
+        is_pred = region == pred_region
+        map_rows.append({
+            "Region": region,
             "lat": lat,
             "lon": lon,
-            "size": 300_000 if region == pred_region else 100_000,
-            "color": REGION_COLORS[region],
+            "size": 40 if is_pred else 15,
+            "opacity": 1.0 if is_pred else 0.35,
+            "label": f"{'▶ ' if is_pred else ''}{region}",
         })
-    map_df = pd.DataFrame(map_data)
+    map_df = pd.DataFrame(map_rows)
 
-    # Convert hex to RGB for pydeck
-    def hex_to_rgb(h):
-        h = h.lstrip("#")
-        return [int(h[i:i+2], 16) for i in (0, 2, 4)]
+    fig_map = go.Figure()
 
-    map_df["rgb"] = map_df["color"].apply(hex_to_rgb)
+    # Draw quadrant shading rectangles
+    quad_shapes = [
+        dict(type="rect", x0=0,    y0=0,   x1=180,  y1=90,  fillcolor=REGION_COLORS["North-East"], opacity=0.12, line_width=0),
+        dict(type="rect", x0=-180, y0=0,   x1=0,    y1=90,  fillcolor=REGION_COLORS["North-West"], opacity=0.12, line_width=0),
+        dict(type="rect", x0=0,    y0=-90, x1=180,  y1=0,   fillcolor=REGION_COLORS["South-East"], opacity=0.12, line_width=0),
+        dict(type="rect", x0=-180, y0=-90, x1=0,    y1=0,   fillcolor=REGION_COLORS["South-West"], opacity=0.12, line_width=0),
+    ]
+    # Highlight predicted quadrant more strongly
+    pred_coords = {
+        "North-East": dict(x0=0,    y0=0,   x1=180,  y1=90),
+        "North-West": dict(x0=-180, y0=0,   x1=0,    y1=90),
+        "South-East": dict(x0=0,    y0=-90, x1=180,  y1=0),
+        "South-West": dict(x0=-180, y0=-90, x1=0,    y1=0),
+    }[pred_region]
+    quad_shapes.append(dict(
+        type="rect", **pred_coords,
+        fillcolor=REGION_COLORS[pred_region], opacity=0.25,
+        line=dict(color=REGION_COLORS[pred_region], width=2),
+    ))
 
-    layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=map_df,
-        get_position="[lon, lat]",
-        get_radius="size",
-        get_fill_color="rgb",
-        pickable=True,
-        opacity=0.8,
+    # One scatter trace per region for correct legend colours
+    for _, row in map_df.iterrows():
+        is_pred = row["Region"] == pred_region
+        fig_map.add_trace(go.Scattergeo(
+            lon=[row["lon"]],
+            lat=[row["lat"]],
+            mode="markers+text",
+            marker=dict(
+                size=row["size"],
+                color=REGION_COLORS[row["Region"]],
+                opacity=row["opacity"],
+                line=dict(width=2 if is_pred else 0, color="white"),
+            ),
+            text=row["label"],
+            textposition="bottom center",
+            textfont=dict(
+                size=12 if is_pred else 10,
+                color=REGION_COLORS[row["Region"]],
+            ),
+            name=row["Region"],
+            showlegend=False,
+        ))
+
+    fig_map.update_layout(
+        shapes=quad_shapes,
+        geo=dict(
+            showland=True, landcolor="#1a2035",
+            showocean=True, oceancolor="#0a1020",
+            showcoastlines=True, coastlinecolor="#2a3a5a",
+            showframe=False,
+            bgcolor="#080f1e",
+            projection_type="natural earth",
+            lataxis=dict(range=[-80, 80]),
+        ),
+        paper_bgcolor="#080f1e",
+        plot_bgcolor="#080f1e",
+        margin=dict(t=0, b=0, l=0, r=0),
+        height=320,
     )
-    view = pdk.ViewState(latitude=10, longitude=0, zoom=0.8)
-    st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view, map_style="mapbox://styles/mapbox/dark-v10"), height=300)
+    st.plotly_chart(fig_map, use_container_width=True)
