@@ -104,12 +104,20 @@ MODEL_NAMES.forEach(name => {
   const div = document.createElement('div');
   div.className = 'model-card';
   div.innerHTML = `
-    <div class="model-name">${name}</div>
-    <div class="pred-row">
+  <div class="model-name">${name}</div>
+  <div class="pred-row">
       <span class="pred-label" id="label-${id}">&mdash;</span>
       <div class="prob-wrap"><div class="prob-fill" id="bar-${id}" style="width:0%"></div></div>
       <span class="prob-val" id="prob-${id}">&mdash;</span>
-    </div>`;
+      <span class="match-ind" id="match-${id}" style="font-size:14px;margin-left:4px;">&nbsp;</span>
+  </div>`;
+//   div.innerHTML = `
+//     <div class="model-name">${name}</div>
+//     <div class="pred-row">
+//       <span class="pred-label" id="label-${id}">&mdash;</span>
+//       <div class="prob-wrap"><div class="prob-fill" id="bar-${id}" style="width:0%"></div></div>
+//       <span class="prob-val" id="prob-${id}">&mdash;</span>
+//     </div>`;
   overlay.appendChild(div);
 });
 
@@ -195,6 +203,9 @@ function updateFrame(s) {
     const barEl   = document.getElementById('bar-'   + id);
     const probEl  = document.getElementById('prob-'  + id);
 
+    const matchEl = document.getElementById('match-' + id);
+    const correct = (pred.label === curr.is_fishing);
+
     labelEl.textContent = fish ? '\uD83C\uDFA3 Fishing' : '\u26F5 Transiting';
     labelEl.className   = 'pred-label ' + (fish ? 'fishing' : 'transiting');
 
@@ -203,6 +214,9 @@ function updateFrame(s) {
 
     probEl.textContent  = pct + '%';
     probEl.style.color  = fish ? FISHING_COLOR : TRANSIT_COLOR;
+
+    matchEl.textContent = correct ? '✓' : '✗';
+    matchEl.style.color = correct ? '#1D9E75' : '#D85A30';    
   });
 }
 

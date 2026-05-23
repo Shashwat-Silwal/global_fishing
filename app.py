@@ -187,7 +187,7 @@ with tab_replay:
         st.caption(f"{len(trips_for_gear)} trips available")
 
         selected_trip = st.selectbox("Trip", sorted(trips_for_gear))
-        selected_model_name = st.selectbox("Highlight model", list(models.keys()))
+        # selected_model_name = st.selectbox("Highlight model", list(models.keys()))
 
         df_trip = (
             df_test[df_test["trip_id_global"] == selected_trip]
