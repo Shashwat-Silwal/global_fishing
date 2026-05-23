@@ -290,11 +290,20 @@ def train_region_model():
     """Train RF on gfw_features with trip-based split; returns (model, report_dict, fi_series)."""
     df = pd.read_parquet("data/gfw_features.parquet")
 
-    # Coerce arrow-backed types
-    for col in ["mmsi", "trip_id_global", "gear_type", "season_str", "source"]:
-        df[col] = df[col].astype(str)
-    df["is_fishing"] = df["is_fishing"].astype(int)
-    df["season"] = df["season"].astype(int)
+    # Normalise gear column — may be "gear_type" or "vessel_gear_type"
+    if "gear_type" not in df.columns and "vessel_gear_type" in df.columns:
+        df["gear_type"] = df["vessel_gear_type"]
+
+    # Coerce arrow-backed types — only columns that actually exist in this file
+    for col in ["mmsi", "trip_id_global", "gear_type", "vessel_gear_type", "season_str", "source"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str)
+    for col in ["is_fishing"]:
+        if col in df.columns:
+            df[col] = df[col].astype(int)
+    for col in ["season", "month"]:
+        if col in df.columns:
+            df[col] = df[col].astype(int)
     for col in [
         "speed", "course", "lat", "lon",
         "distance_from_shore", "distance_from_port",
@@ -302,7 +311,8 @@ def train_region_model():
         "speed_mean_10", "speed_std_10", "course_std_10",
         "speed_mean_30", "speed_std_30", "course_std_30",
     ]:
-        df[col] = df[col].astype(float)
+        if col in df.columns:
+            df[col] = df[col].astype(float)
 
     # Label ocean regions
     conditions = [
@@ -313,7 +323,7 @@ def train_region_model():
     choices = ["North-East", "North-West", "South-East"]
     df["ocean_region"] = np.select(conditions, choices, default="South-West")
 
-    # Gear dummies
+    # Gear dummies (gear_type is now guaranteed to exist from normalisation above)
     for g in ["longliner", "fixed_gear", "purse_seine", "trawler"]:
         df[f"gear_{g}"] = (df["gear_type"] == g).astype(float)
 
