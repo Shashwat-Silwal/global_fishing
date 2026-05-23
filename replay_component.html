@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vessel Replay</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080f1e; color: #e8edf5; font-family: system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #map { flex: 1; background: #080f1e; }
+  #overlay { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 8px; z-index: 1000; pointer-events: none; min-width: 190px; }
+  .model-card { background: rgba(8,15,30,0.92); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 10px 14px; }
+  .model-name { font-size: 10px; color: #6b7fa3; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 6px; font-weight: 600; }
+  .pred-row { display: flex; align-items: center; gap: 8px; }
+  .pred-label { font-size: 13px; font-weight: 600; min-width: 100px; }
+  .pred-label.fishing   { color: #D85A30; }
+  .pred-label.transiting{ color: #378ADD; }
+  .prob-wrap { flex: 1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
+  .prob-fill { height: 100%; border-radius: 2px; transition: width 0.25s ease; }
+  .prob-fill.fishing    { background: #D85A30; }
+  .prob-fill.transiting { background: #378ADD; }
+  .prob-val { font-size: 12px; font-family: monospace; font-weight: 600; min-width: 36px; text-align: right; }
+  #info-bar {background: rgba(8,15,30,0.95); border-top: 1px solid rgba(255,255,255,0.08); padding: 8px 16px; display: flex; gap: 20px; align-items: center; z-index: 1000; flex-shrink: 0; }
+  .info-item { display: flex; flex-direction: column; gap: 1px; }
+  .info-label { font-size: 10px; color: #6b7fa3; text-transform: uppercase; letter-spacing: 0.07em; }
+  .info-val   { font-size: 14px; font-weight: 600; font-family: monospace; }
+  #progress-wrap { flex: 1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
+  #progress-fill { height: 100%; background: #1D9E75; border-radius: 2px; transition: width 0.1s linear; }
+  #ping-counter { font-size: 11px; color: #6b7fa3; font-family: monospace; white-space: nowrap; }
+  .truth-badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .truth-badge.fishing    { background: rgba(216,90,48,0.2);  color: #D85A30; }
+  .truth-badge.transiting { background: rgba(55,138,221,0.2); color: #378ADD; }
+  .leaflet-tile-pane { filter: brightness(0.75) saturate(0.6); }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="overlay"></div>
+
+<div id="info-bar">
+  <div class="info-item">
+    <span class="info-label">Speed</span>
+    <span class="info-val" id="val-speed">&mdash;</span>
+  </div>
+  <div class="info-item">
+    <span class="info-label">Course</span>
+    <span class="info-val" id="val-course">&mdash;</span>
+  </div>
+  <div class="info-item">
+    <span class="info-label">Datetime</span>
+    <span class="info-val" id="val-datetime">&mdash;</span>
+  </div>
+  <div class="info-item">
+    <span class="info-label">Ground truth</span>
+    <span class="truth-badge" id="val-truth">&mdash;</span>
+  </div>
+  <div class="info-item">
+    <span class="info-label">Speed</span>
+    <select id="speed-select" style="background:#0d1a2e;color:#e8edf5;border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:2px 6px;font-size:12px;font-family:monospace;">
+      <option value="500">0.5×</option>
+      <option value="250" selected>1×</option>
+      <option value="125">2×</option>
+      <option value="50">5×</option>
+      <option value="20">10×</option>
+    </select>
+  </div>
+  <button id="pause-btn" onclick="togglePause()" style="
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #e8edf5;
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  ">⏸ Pause</button>
+  <div id="progress-wrap"><div id="progress-fill"></div></div>
+  <span id="ping-counter">0 / 0</span>
+</div>
+
+<script>
+// ── Data injected by Streamlit (build_replay_html in app.py) ───────────────
+
+// ── Map ────────────────────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: true, attributionControl: false })
+             .setView([CENTER_LAT, CENTER_LON], 6);
+
+// Fit map to trip bounds once tiles load
+const bounds = L.latLngBounds(PINGS.map(p => [p.lat, p.lon]));
+map.fitBounds(bounds, { padding: [40, 40] });          
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+// ── Build model cards ──────────────────────────────────────────────────────
+const overlay = document.getElementById('overlay');
+MODEL_NAMES.forEach(name => {
+  const id  = name.replace(/\s+/g, '_');
+  const div = document.createElement('div');
+  div.className = 'model-card';
+  div.innerHTML = `
+    <div class="model-name">${name}</div>
+    <div class="pred-row">
+      <span class="pred-label" id="label-${id}">&mdash;</span>
+      <div class="prob-wrap"><div class="prob-fill" id="bar-${id}" style="width:0%"></div></div>
+      <span class="prob-val" id="prob-${id}">&mdash;</span>
+    </div>`;
+  overlay.appendChild(div);
+});
+
+// ── Leaflet layers ─────────────────────────────────────────────────────────
+const FISHING_COLOR   = '#D85A30';
+const TRANSIT_COLOR   = '#378ADD';
+const CURRENT_COLOR   = '#ffffff';
+
+// Ghost track (full trip, faint)
+const ghostCoords = PINGS.map(p => [p.lat, p.lon]);
+L.polyline(ghostCoords, { color: 'rgba(255,255,255,0.12)', weight: 1.5, smoothFactor: 1 }).addTo(map);
+
+// Animated track polyline
+const trackLine = L.polyline([], { color: 'rgba(255,255,255,0.55)', weight: 2 }).addTo(map);
+
+// Circle markers group for past pings
+const pingLayer = L.layerGroup().addTo(map);
+
+// Current position marker
+const currentMarker = L.circleMarker([CENTER_LAT, CENTER_LON], {
+  radius: 9, color: '#080f1e', weight: 2,
+  fillColor: CURRENT_COLOR, fillOpacity: 1
+}).addTo(map);
+
+// ── Animation ──────────────────────────────────────────────────────────────
+let step     = 0;
+let lastTime = null;
+let paused = false;
+const MS_PER_PING = 250;
+
+function togglePause() {
+  paused = !paused;
+  document.getElementById('pause-btn').textContent = paused ? '▶ Play' : '⏸ Pause';
+}
+
+function updateFrame(s) {
+  const curr = PINGS[s];
+  const past = PINGS.slice(0, s + 1);
+
+  // Update track
+  trackLine.setLatLngs(past.map(p => [p.lat, p.lon]));
+
+  // Update ping dots (add one at a time for performance)
+  if (s > 0) {
+    const prev = PINGS[s - 1];
+    L.circleMarker([prev.lat, prev.lon], {
+      radius: 4,
+      color: 'transparent',
+      fillColor: prev.is_fishing === 1 ? FISHING_COLOR : TRANSIT_COLOR,
+      fillOpacity: 0.85
+    }).addTo(pingLayer);
+  }
+
+  // Update current marker
+  currentMarker.setLatLng([curr.lat, curr.lon]);
+
+  // Info bar
+  document.getElementById('val-speed').textContent   = curr.speed.toFixed(1) + ' kts';
+  document.getElementById('val-course').textContent  = curr.course.toFixed(0) + '\u00b0';
+  document.getElementById('val-datetime').textContent = curr.datetime.slice(0, 16).replace('T', ' ');
+
+  const truthEl = document.getElementById('val-truth');
+  if (curr.is_fishing === 1) {
+    truthEl.textContent = '\uD83C\uDFA3 Fishing';
+    truthEl.className   = 'truth-badge fishing';
+  } else {
+    truthEl.textContent = '\u26F5 Transiting';
+    truthEl.className   = 'truth-badge transiting';
+  }
+
+  // Progress
+  document.getElementById('progress-fill').style.width = ((s / (PINGS.length - 1)) * 100) + '%';
+  document.getElementById('ping-counter').textContent  = (s + 1) + ' / ' + PINGS.length;
+
+  // Model cards
+  MODEL_NAMES.forEach(name => {
+    const id   = name.replace(/\s+/g, '_');
+    const pred = PREDS[name][s];
+    const fish = pred.label === 1;
+    const pct  = Math.round(pred.prob * 100);
+
+    const labelEl = document.getElementById('label-' + id);
+    const barEl   = document.getElementById('bar-'   + id);
+    const probEl  = document.getElementById('prob-'  + id);
+
+    labelEl.textContent = fish ? '\uD83C\uDFA3 Fishing' : '\u26F5 Transiting';
+    labelEl.className   = 'pred-label ' + (fish ? 'fishing' : 'transiting');
+
+    barEl.style.width     = pct + '%';
+    barEl.className       = 'prob-fill ' + (fish ? 'fishing' : 'transiting');
+
+    probEl.textContent  = pct + '%';
+    probEl.style.color  = fish ? FISHING_COLOR : TRANSIT_COLOR;
+  });
+}
+
+function tick(timestamp) {
+  if (paused) {
+    requestAnimationFrame(tick);
+    return;
+  }
+  if (!lastTime) lastTime = timestamp;
+  const msPerPing = parseInt(document.getElementById('speed-select').value);
+  if (timestamp - lastTime >= msPerPing) {
+    lastTime = timestamp;
+    updateFrame(step);
+    step++;
+    if (step >= PINGS.length) {
+      step = 0;
+      pingLayer.clearLayers();
+      trackLine.setLatLngs([]);
+      setTimeout(() => { lastTime = null; requestAnimationFrame(tick); }, 2000);
+      return;
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+// function tick(timestamp) {
+//   if (!lastTime) lastTime = timestamp;
+//   if (timestamp - lastTime >= MS_PER_PING) {
+//     lastTime = timestamp;
+//     updateFrame(step);
+//     step++;
+//     if (step >= PINGS.length) {
+//       // Pause then loop
+//       step = 0;
+//       pingLayer.clearLayers();
+//       trackLine.setLatLngs([]);
+//       setTimeout(() => { lastTime = null; requestAnimationFrame(tick); }, 2000);
+//       return;
+//     }
+//   }
+//   requestAnimationFrame(tick);
+// }
+
+// Start after map is ready
+map.whenReady(() => {
+  setTimeout(() => requestAnimationFrame(tick), 300);
+});
+</script>
+</body>
+</html>
