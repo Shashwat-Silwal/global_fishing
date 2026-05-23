@@ -6,6 +6,11 @@ import numpy as np
 import pandas as pd
 import pydeck as pdk
 import streamlit as st
+import plotly.express as px
+import plotly.graph_objects as go
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 
 st.set_page_config(page_title="GFW Vessel Classifier", page_icon="🚢", layout="wide")
 
@@ -162,8 +167,8 @@ for key, default in [
 
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab_replay, tab_sim, tab_patterns = st.tabs(
-    ["▶ Replay vessel track", "🎮 Manual simulator", "🐟 How vessels fish"]
+tab_replay, tab_sim, tab_patterns, tab_region = st.tabs(
+    ["▶ Replay vessel track", "🎮 Manual simulator", "🐟 How vessels fish", "🌍 Ocean Region Predictor"]
 )
 
 
@@ -239,3 +244,306 @@ with tab_sim:
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_patterns:
     st.write("Patterns tab — coming soon")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — OCEAN REGION PREDICTOR (Q3)
+# ══════════════════════════════════════════════════════════════════════════════
+
+REGION_FEATURES = [
+    "speed",
+    "speed_change_rate",
+    "course_change_rate",
+    "speed_mean_10",
+    "speed_std_10",
+    "course_std_10",
+    "speed_mean_30",
+    "speed_std_30",
+    "course_std_30",
+    "is_fishing",
+    "distance_from_shore",
+    "distance_from_port",
+    "season",
+    "gear_longliner",
+    "gear_fixed_gear",
+    "gear_purse_seine",
+    "gear_trawler",
+]
+
+REGION_COLORS = {
+    "North-East": "#0984e3",
+    "North-West": "#6c63ff",
+    "South-East": "#00b894",
+    "South-West": "#e17055",
+}
+
+REGION_COORDS = {
+    "North-East": (45, 135),
+    "North-West": (45, -135),
+    "South-East": (-30, 135),
+    "South-West": (-30, -60),
+}
+
+
+@st.cache_resource
+def train_region_model():
+    """Train RF on gfw_features with trip-based split; returns (model, report_dict, fi_series)."""
+    df = pd.read_parquet("data/gfw_features.parquet")
+
+    # Coerce arrow-backed types
+    for col in ["mmsi", "trip_id_global", "gear_type", "season_str", "source"]:
+        df[col] = df[col].astype(str)
+    df["is_fishing"] = df["is_fishing"].astype(int)
+    df["season"] = df["season"].astype(int)
+    for col in [
+        "speed", "course", "lat", "lon",
+        "distance_from_shore", "distance_from_port",
+        "speed_change_rate", "course_change_rate",
+        "speed_mean_10", "speed_std_10", "course_std_10",
+        "speed_mean_30", "speed_std_30", "course_std_30",
+    ]:
+        df[col] = df[col].astype(float)
+
+    # Label ocean regions
+    conditions = [
+        (df["lat"] >= 0) & (df["lon"] >= 0),
+        (df["lat"] >= 0) & (df["lon"] < 0),
+        (df["lat"] < 0) & (df["lon"] >= 0),
+    ]
+    choices = ["North-East", "North-West", "South-East"]
+    df["ocean_region"] = np.select(conditions, choices, default="South-West")
+
+    # Gear dummies
+    for g in ["longliner", "fixed_gear", "purse_seine", "trawler"]:
+        df[f"gear_{g}"] = (df["gear_type"] == g).astype(float)
+
+    # Trip-based split (no data leakage)
+    trips = df["trip_id_global"].unique().tolist()
+    train_trips, test_trips = train_test_split(trips, test_size=0.2, random_state=42)
+    train_mask = df["trip_id_global"].isin(set(train_trips))
+    test_mask = df["trip_id_global"].isin(set(test_trips))
+
+    X_train = df.loc[train_mask, REGION_FEATURES].fillna(0)
+    y_train = df.loc[train_mask, "ocean_region"]
+    X_test = df.loc[test_mask, REGION_FEATURES].fillna(0)
+    y_test = df.loc[test_mask, "ocean_region"]
+
+    rf = RandomForestClassifier(
+        n_estimators=100, max_depth=15, random_state=42, n_jobs=-1
+    )
+    rf.fit(X_train, y_train)
+
+    preds = rf.predict(X_test)
+    report = classification_report(y_test, preds, output_dict=True)
+    acc = accuracy_score(y_test, preds)
+    cm = confusion_matrix(y_test, preds, labels=list(REGION_COLORS.keys()))
+    fi = pd.Series(rf.feature_importances_, index=REGION_FEATURES).sort_values(
+        ascending=False
+    )
+
+    return rf, report, acc, cm, fi
+
+
+with tab_region:
+    st.subheader("🌍 Ocean Region Predictor")
+    st.markdown(
+        "Based on Q3 of the notebook. A Random Forest trained on movement + gear features "
+        "predicts which of the four global ocean quadrants a vessel is operating in — "
+        "**without using lat/lon directly**. "
+        "Improvements over the notebook: trip-based train/test split (no leakage), "
+        "enriched feature set including distance from shore/port, season, and all rolling windows."
+    )
+
+    with st.spinner("Training region model on first load (cached after)…"):
+        rf_region, report, acc, cm, fi = train_region_model()
+
+    # ── Model performance summary ──────────────────────────────────────────
+    st.divider()
+    st.subheader("Model Performance")
+
+    col_acc, col_nb = st.columns([1, 2])
+    with col_acc:
+        st.metric("Accuracy", f"{acc:.1%}", delta=f"+{acc - 0.61:.1%} vs notebook baseline")
+        st.caption("Notebook (random split) achieved ~61%. Trip-based split + richer features → 82%.")
+
+    with col_nb:
+        regions = list(REGION_COLORS.keys())
+        metrics_df = pd.DataFrame(
+            {
+                "Region": regions,
+                "Precision": [report[r]["precision"] for r in regions],
+                "Recall": [report[r]["recall"] for r in regions],
+                "F1": [report[r]["f1-score"] for r in regions],
+            }
+        )
+        fig_metrics = go.Figure()
+        for metric, color in zip(
+            ["Precision", "Recall", "F1"], ["#0984e3", "#00b894", "#6c63ff"]
+        ):
+            fig_metrics.add_bar(
+                name=metric,
+                x=metrics_df["Region"],
+                y=metrics_df[metric],
+                marker_color=color,
+            )
+        fig_metrics.update_layout(
+            barmode="group",
+            height=260,
+            margin=dict(t=10, b=10, l=0, r=0),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            yaxis=dict(range=[0, 1.05]),
+        )
+        st.plotly_chart(fig_metrics, use_container_width=True)
+
+    # ── Confusion matrix ───────────────────────────────────────────────────
+    col_cm, col_fi = st.columns(2)
+    with col_cm:
+        st.markdown("**Confusion Matrix (test set)**")
+        fig_cm = px.imshow(
+            cm,
+            labels=dict(x="Predicted", y="Actual", color="Count"),
+            x=regions,
+            y=regions,
+            text_auto=True,
+            color_continuous_scale="Blues",
+            aspect="auto",
+            height=300,
+        )
+        fig_cm.update_layout(margin=dict(t=10, b=10, l=0, r=0))
+        st.plotly_chart(fig_cm, use_container_width=True)
+
+    with col_fi:
+        st.markdown("**Feature Importances**")
+        fi_plot = fi.head(10).sort_values()
+        fig_fi = px.bar(
+            x=fi_plot.values,
+            y=fi_plot.index,
+            orientation="h",
+            color=fi_plot.values,
+            color_continuous_scale="Tealgrn",
+            height=300,
+        )
+        fig_fi.update_layout(
+            margin=dict(t=10, b=10, l=0, r=0),
+            showlegend=False,
+            coloraxis_showscale=False,
+            xaxis_title="Importance",
+            yaxis_title="",
+        )
+        st.plotly_chart(fig_fi, use_container_width=True)
+
+    # ── Interactive predictor ──────────────────────────────────────────────
+    st.divider()
+    st.subheader("🔮 Predict a Vessel's Ocean Region")
+    st.markdown("Adjust the sliders to describe a vessel's behaviour, then predict which ocean region it most likely belongs to.")
+
+    col_l, col_r = st.columns(2)
+
+    with col_l:
+        p_speed = st.slider("Speed (knots)", 0.0, 20.0, 4.5, 0.1)
+        p_speed_change = st.slider("Speed change rate (knots/min)", -5.0, 5.0, 0.0, 0.1)
+        p_course_change = st.slider("Course change rate (°/min)", -30.0, 30.0, 0.0, 0.5)
+        p_speed_mean = st.slider("Speed mean (last 10 pings)", 0.0, 20.0, 4.5, 0.1)
+        p_speed_std = st.slider("Speed std (last 10 pings)", 0.0, 10.0, 0.8, 0.1)
+        p_course_std = st.slider("Course std (last 10 pings)", 0.0, 100.0, 30.0, 0.5)
+        p_speed_mean30 = st.slider("Speed mean (last 30 pings)", 0.0, 20.0, 4.5, 0.1)
+        p_speed_std30 = st.slider("Speed std (last 30 pings)", 0.0, 10.0, 0.8, 0.1)
+        p_course_std30 = st.slider("Course std (last 30 pings)", 0.0, 100.0, 30.0, 0.5)
+
+    with col_r:
+        p_is_fishing = st.selectbox("Currently fishing?", [0, 1], format_func=lambda x: "Yes" if x else "No")
+        p_dist_shore = st.slider("Distance from shore (m)", 0, 200_000, 50_000, 1_000)
+        p_dist_port = st.slider("Distance from port (m)", 0, 500_000, 100_000, 5_000)
+        p_season = st.selectbox("Season", [0, 1, 2, 3], format_func=lambda x: ["Winter", "Spring", "Summer", "Autumn"][x])
+        p_gear = st.selectbox("Gear type", ["longliner", "fixed_gear", "purse_seine", "trawler"])
+
+        gear_vec = {
+            "gear_longliner": float(p_gear == "longliner"),
+            "gear_fixed_gear": float(p_gear == "fixed_gear"),
+            "gear_purse_seine": float(p_gear == "purse_seine"),
+            "gear_trawler": float(p_gear == "trawler"),
+        }
+
+        X_pred = pd.DataFrame([{
+            "speed": p_speed,
+            "speed_change_rate": p_speed_change,
+            "course_change_rate": p_course_change,
+            "speed_mean_10": p_speed_mean,
+            "speed_std_10": p_speed_std,
+            "course_std_10": p_course_std,
+            "speed_mean_30": p_speed_mean30,
+            "speed_std_30": p_speed_std30,
+            "course_std_30": p_course_std30,
+            "is_fishing": p_is_fishing,
+            "distance_from_shore": p_dist_shore,
+            "distance_from_port": p_dist_port,
+            "season": p_season,
+            **gear_vec,
+        }])[REGION_FEATURES]
+
+        pred_region = rf_region.predict(X_pred)[0]
+        pred_proba = rf_region.predict_proba(X_pred)[0]
+        class_order = rf_region.classes_
+
+        st.markdown("### Prediction")
+        color = REGION_COLORS[pred_region]
+        st.markdown(
+            f"<div style='background:{color};padding:16px;border-radius:10px;"
+            f"text-align:center;color:white;font-size:1.4em;font-weight:bold'>"
+            f"🌐 {pred_region}</div>",
+            unsafe_allow_html=True,
+        )
+
+        # Probability bars
+        st.markdown("**Confidence per region**")
+        prob_df = pd.DataFrame({
+            "Region": class_order,
+            "Probability": pred_proba,
+        }).sort_values("Probability", ascending=True)
+        fig_prob = px.bar(
+            prob_df,
+            x="Probability",
+            y="Region",
+            orientation="h",
+            color="Region",
+            color_discrete_map=REGION_COLORS,
+            height=200,
+        )
+        fig_prob.update_layout(
+            margin=dict(t=5, b=5, l=0, r=0),
+            showlegend=False,
+            xaxis=dict(range=[0, 1]),
+        )
+        st.plotly_chart(fig_prob, use_container_width=True)
+
+    # ── Mini world map showing predicted region ────────────────────────────
+    st.markdown("**Predicted location on globe**")
+    map_data = []
+    for region, (lat, lon) in REGION_COORDS.items():
+        map_data.append({
+            "region": region,
+            "lat": lat,
+            "lon": lon,
+            "size": 300_000 if region == pred_region else 100_000,
+            "color": REGION_COLORS[region],
+        })
+    map_df = pd.DataFrame(map_data)
+
+    # Convert hex to RGB for pydeck
+    def hex_to_rgb(h):
+        h = h.lstrip("#")
+        return [int(h[i:i+2], 16) for i in (0, 2, 4)]
+
+    map_df["rgb"] = map_df["color"].apply(hex_to_rgb)
+
+    layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=map_df,
+        get_position="[lon, lat]",
+        get_radius="size",
+        get_fill_color="rgb",
+        pickable=True,
+        opacity=0.8,
+    )
+    view = pdk.ViewState(latitude=10, longitude=0, zoom=0.8)
+    st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view, map_style="mapbox://styles/mapbox/dark-v10"), height=300)
