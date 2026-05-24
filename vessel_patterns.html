@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How Vessels Fish — GFW Gear Type Patterns</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #080f1e;
+    --surface: #0d1a2e;
+    --surface2: #12233d;
+    --border: rgba(255,255,255,0.08);
+    --text: #e8edf5;
+    --muted: #6b7fa3;
+    --longliner: #378ADD;
+    --trawler: #EF9F27;
+    --purse: #D85A30;
+    --fixed: #5DB87A;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    /* No min-height: 100vh — let content determine height inside iframe */
+    padding: 16px;
+    overflow-x: hidden;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 16px;
+  }
+
+  header h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  header p {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 300;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .btn:hover { background: var(--surface2); border-color: rgba(255,255,255,0.15); }
+
+  .btn.primary {
+    background: #1a4a8a;
+    border-color: #2563b0;
+    color: #e8edf5;
+  }
+
+  .btn.primary:hover { background: #1e56a0; }
+
+  .speed-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .speed-control input[type=range] {
+    width: 80px;
+    accent-color: #378ADD;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .panel:hover { border-color: rgba(255,255,255,0.18); }
+  .panel.paused { border-color: rgba(255,255,255,0.3); }
+
+  .panel-header {
+    padding: 10px 14px 7px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+  }
+
+  .gear-name {
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .gear-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .phase-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.06);
+    color: var(--muted);
+    letter-spacing: 0.03em;
+    transition: all 0.3s;
+  }
+
+  canvas {
+    width: 100%;
+    display: block;
+    background: #060d1a;
+  }
+
+  .panel-stats {
+    padding: 8px 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    border-top: 1px solid var(--border);
+  }
+
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+
+  .stat-label {
+    font-size: 9px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .stat-val {
+    font-size: 14px;
+    font-weight: 500;
+    font-family: 'DM Mono', monospace;
+    transition: color 0.3s;
+  }
+
+  .panel-desc {
+    padding: 6px 14px 10px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.55;
+    font-weight: 300;
+    min-height: 46px;
+    transition: color 0.3s;
+  }
+
+  .progress-bar {
+    height: 2px;
+    background: rgba(255,255,255,0.06);
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    transition: width 0.1s linear;
+  }
+
+  footer {
+    text-align: center;
+    margin-top: 14px;
+    font-size: 10px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .click-hint {
+    text-align: center;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>How vessels fish</h1>
+  <p>Synthetic AIS movement patterns — each gear type leaves a distinct signature in vessel tracking data</p>
+</header>
+
+<div class="controls">
+  <button class="btn primary" id="playBtn" onclick="togglePlay()">&#9654; Play</button>
+  <button class="btn" onclick="resetAll()">&#8635; Reset</button>
+  <div class="speed-control">
+    <span>Speed</span>
+    <input type="range" id="speedSlider" min="1" max="8" value="3" step="1">
+    <span id="speedLabel">3×</span>
+  </div>
+</div>
+
+<p class="click-hint">Click any panel to pause / resume it individually</p>
+
+<div class="grid">
+  <div class="panel" id="panel-longliner" onclick="togglePanelPause('longliner')">
+    <div class="panel-header">
+      <div class="gear-name">
+        <div class="gear-dot" style="background:var(--longliner)"></div>
+        Drifting longliner
+      </div>
+      <div class="phase-badge" id="phase-longliner">ready</div>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="prog-longliner" style="background:var(--longliner)"></div></div>
+    <canvas id="canvas-longliner" height="180"></canvas>
+    <div class="panel-stats">
+      <div class="stat">
+        <div class="stat-label">Speed</div>
+        <div class="stat-val" id="spd-longliner" style="color:var(--longliner)">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Course</div>
+        <div class="stat-val" id="crs-longliner">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Status</div>
+        <div class="stat-val" id="sts-longliner">—</div>
+      </div>
+    </div>
+    <div class="panel-desc" id="desc-longliner">
+      Sets a line with thousands of baited hooks then drifts with ocean currents for hours while the line soaks — nearly stationary movement with very slow, irregular drift.
+    </div>
+  </div>
+
+  <div class="panel" id="panel-trawler" onclick="togglePanelPause('trawler')">
+    <div class="panel-header">
+      <div class="gear-name">
+        <div class="gear-dot" style="background:var(--trawler)"></div>
+        Trawler
+      </div>
+      <div class="phase-badge" id="phase-trawler">ready</div>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="prog-trawler" style="background:var(--trawler)"></div></div>
+    <canvas id="canvas-trawler" height="180"></canvas>
+    <div class="panel-stats">
+      <div class="stat">
+        <div class="stat-label">Speed</div>
+        <div class="stat-val" id="spd-trawler" style="color:var(--trawler)">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Course</div>
+        <div class="stat-val" id="crs-trawler">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Status</div>
+        <div class="stat-val" id="sts-trawler">—</div>
+      </div>
+    </div>
+    <div class="panel-desc" id="desc-trawler">
+      Drags a large net along the seabed or through mid-water at a characteristic slow, steady speed of 2–3 knots. The consistent heading and speed are what the model learns to recognise.
+    </div>
+  </div>
+
+  <div class="panel" id="panel-purse" onclick="togglePanelPause('purse')">
+    <div class="panel-header">
+      <div class="gear-name">
+        <div class="gear-dot" style="background:var(--purse)"></div>
+        Purse seiner
+      </div>
+      <div class="phase-badge" id="phase-purse">ready</div>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="prog-purse" style="background:var(--purse)"></div></div>
+    <canvas id="canvas-purse" height="180"></canvas>
+    <div class="panel-stats">
+      <div class="stat">
+        <div class="stat-label">Speed</div>
+        <div class="stat-val" id="spd-purse" style="color:var(--purse)">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Course</div>
+        <div class="stat-val" id="crs-purse">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Status</div>
+        <div class="stat-val" id="sts-purse">—</div>
+      </div>
+    </div>
+    <div class="panel-desc" id="desc-purse">
+      Searches at speed for fish schools, then rapidly encircles them in a tight loop before cinching the net closed. Only 3.8% of tracked time is the active set — the hardest gear type to detect.
+    </div>
+  </div>
+
+  <div class="panel" id="panel-fixed" onclick="togglePanelPause('fixed')">
+    <div class="panel-header">
+      <div class="gear-name">
+        <div class="gear-dot" style="background:var(--fixed)"></div>
+        Fixed gear
+      </div>
+      <div class="phase-badge" id="phase-fixed">ready</div>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="prog-fixed" style="background:var(--fixed)"></div></div>
+    <canvas id="canvas-fixed" height="180"></canvas>
+    <div class="panel-stats">
+      <div class="stat">
+        <div class="stat-label">Speed</div>
+        <div class="stat-val" id="spd-fixed" style="color:var(--fixed)">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Course</div>
+        <div class="stat-val" id="crs-fixed">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Status</div>
+        <div class="stat-val" id="sts-fixed">—</div>
+      </div>
+    </div>
+    <div class="panel-desc" id="desc-fixed">
+      Traps, pots, or fixed longlines set in one location. The vessel steams to the site, stops while gear is deployed or hauled, then departs. A distinct arrive–stop–depart signature.
+    </div>
+  </div>
+</div>
+
+<footer>synthetic tracks &middot; dead-reckoning simulation &middot; 1 ping = 1 minute interval</footer>
+
+<script>
+const rng = (seed) => {
+  let s = seed;
+  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+};
+
+const norm = (r, mu, sigma) => {
+  const u1 = r(), u2 = r();
+  return mu + sigma * Math.sqrt(-2 * Math.log(u1 + 1e-10)) * Math.cos(2 * Math.PI * u2);
+};
+
+function generateTrack(type) {
+  const r = rng(type === 'longliner' ? 42 : type === 'trawler' ? 77 : type === 'purse' ? 13 : 99);
+  const speeds = [], courses = [], phases = [], descs = [];
+
+  if (type === 'longliner') {
+    for (let i = 0; i < 15; i++) { speeds.push(Math.max(3, Math.min(7, norm(r, 5, 0.8)))); courses.push(90 + norm(r, 0, 5)); phases.push('steaming to grounds'); descs.push('Steaming to fishing grounds at transit speed.'); }
+    for (let i = 0; i < 8; i++) { speeds.push(Math.max(1.5, Math.min(3.5, norm(r, 2.5, 0.3)))); courses.push(90 + norm(r, 0, 8)); phases.push('setting line'); descs.push('Paying out the longline — slow, steady movement as hooks are deployed.'); }
+    for (let i = 0; i < 35; i++) { speeds.push(Math.max(0.2, Math.min(1.5, norm(r, 0.7, 0.3)))); courses.push(courses[courses.length-1] + norm(r, 0, 4)); phases.push('line soaking'); descs.push('Line soaking — drifting with currents while hooks fish. Nearly stationary. This is classified as fishing.'); }
+    for (let i = 0; i < 10; i++) { speeds.push(Math.max(1, Math.min(3, norm(r, 1.8, 0.4)))); courses.push(courses[courses.length-1] + norm(r, 0, 5)); phases.push('hauling line'); descs.push('Hauling back the longline — slow movement as the line is retrieved.'); }
+  }
+  else if (type === 'trawler') {
+    for (let i = 0; i < 12; i++) { speeds.push(Math.max(4, Math.min(8, norm(r, 6, 0.6)))); courses.push(180 + norm(r, 0, 4)); phases.push('steaming'); descs.push('Steaming to fishing grounds.'); }
+    for (let i = 0; i < 30; i++) { speeds.push(Math.max(2.2, Math.min(3.6, norm(r, 2.9, 0.2)))); courses.push(courses[courses.length-1] + norm(r, 0, 2.5)); phases.push('towing net'); descs.push('Towing the trawl net — the characteristic slow, steady speed and consistent heading that the model learns to classify as fishing.'); }
+    for (let i = 0; i < 8; i++) { speeds.push(Math.max(0.5, Math.min(2, norm(r, 1, 0.3)))); courses.push(courses[courses.length-1] + norm(r, 0, 8)); phases.push('hauling net'); descs.push('Hauling back and sorting the catch.'); }
+    for (let i = 0; i < 25; i++) { speeds.push(Math.max(2.2, Math.min(3.6, norm(r, 2.9, 0.2)))); courses.push(courses[courses.length-1] + norm(r, 0, 2.5)); phases.push('towing net'); descs.push('Second tow — trawlers spend roughly half their tracked time in this fishing state.'); }
+    for (let i = 0; i < 8; i++) { speeds.push(Math.max(0.5, Math.min(2, norm(r, 1, 0.3)))); courses.push(courses[courses.length-1] + norm(r, 0, 8)); phases.push('hauling net'); descs.push('Hauling back — alternating tow and haul is the trawler rhythm.'); }
+  }
+  else if (type === 'purse') {
+    for (let i = 0; i < 15; i++) { speeds.push(Math.max(5, Math.min(9, norm(r, 7, 0.5)))); courses.push(45 + norm(r, 0, 6)); phases.push('searching'); descs.push('Searching for fish schools at speed — this looks similar to ordinary transit and is NOT classified as fishing.'); }
+    for (let i = 0; i < 5; i++) { speeds.push(Math.max(4, Math.min(6, norm(r, 5, 0.3)))); courses.push(courses[courses.length-1] + norm(r, 0, 4)); phases.push('school detected'); descs.push('Fish school detected — vessel slows slightly before beginning the encircling manoeuvre.'); }
+    const setStart = courses[courses.length-1];
+    for (let i = 0; i < 22; i++) { speeds.push(Math.max(3.5, Math.min(5.5, norm(r, 4.5, 0.3)))); courses.push(setStart + (360 * i / 22) + norm(r, 0, 3)); phases.push('setting net'); descs.push('Encircling the school — the tight circular manoeuvre is the most distinctive pattern in the dataset. Only ~20 minutes of active fishing per set.'); }
+    for (let i = 0; i < 20; i++) { speeds.push(Math.max(0, Math.min(0.8, norm(r, 0.3, 0.15)))); courses.push(courses[courses.length-1] + norm(r, 0, 10)); phases.push('pursing & hauling'); descs.push('Net drawn closed (pursed) and fish pumped aboard — nearly stationary while catch is processed.'); }
+    for (let i = 0; i < 10; i++) { speeds.push(Math.max(4, Math.min(8, norm(r, 6.5, 0.5)))); courses.push(45 + norm(r, 0, 6)); phases.push('searching'); descs.push('Resuming the search for the next school — back to transit-like behaviour.'); }
+  }
+  else if (type === 'fixed') {
+    for (let i = 0; i < 12; i++) { speeds.push(Math.max(4, Math.min(8, norm(r, 6, 0.5)))); courses.push(270 + norm(r, 0, 4)); phases.push('transiting to gear'); descs.push('Steaming to the gear location — indistinguishable from any other transit at this point.'); }
+    for (let i = 0; i < 5; i++) { speeds.push(Math.max(0.5, Math.min(2.5, norm(r, 1.5, 0.4)))); courses.push(270 + norm(r, 0, 10)); phases.push('deploying gear'); descs.push('Slowing to deploy traps or pots — the deceleration phase before stopping.'); }
+    for (let i = 0; i < 30; i++) { speeds.push(Math.max(0, Math.min(0.4, Math.abs(norm(r, 0.1, 0.08))))); courses.push(270 + norm(r, 0, 25)); phases.push('gear soaking'); descs.push('Stationary — gear fishing on the seabed. Vessel drifts slightly with current. This long stationary period is the fishing signature.'); }
+    for (let i = 0; i < 5; i++) { speeds.push(Math.max(0.5, Math.min(3, norm(r, 1.8, 0.4)))); courses.push(90 + norm(r, 0, 8)); phases.push('hauling gear'); descs.push('Retrieving traps and sorting catch before departure.'); }
+    for (let i = 0; i < 12; i++) { speeds.push(Math.max(4, Math.min(8, norm(r, 6, 0.5)))); courses.push(90 + norm(r, 0, 4)); phases.push('returning to port'); descs.push('Departing at transit speed — the arrive–stop–depart pattern is the fixed gear signature.'); }
+  }
+
+  return { speeds, courses, phases, descs };
+}
+
+function deadReckoning(speeds, courses, startX, startY, scale) {
+  const pts = [{ x: startX, y: startY }];
+  for (let i = 0; i < speeds.length; i++) {
+    const distUnits = speeds[i] * scale;
+    const rad = (courses[i] - 90) * Math.PI / 180;
+    pts.push({ x: pts[pts.length-1].x + distUnits * Math.cos(rad), y: pts[pts.length-1].y + distUnits * Math.sin(rad) });
+  }
+  return pts;
+}
+
+const GEAR_TYPES = ['longliner', 'trawler', 'purse', 'fixed'];
+const COLORS = { longliner: '#378ADD', trawler: '#EF9F27', purse: '#D85A30', fixed: '#5DB87A' };
+const tracks = {};
+const rawPts = {};
+const pausedState = { longliner: false, trawler: false, purse: false, fixed: false };
+
+GEAR_TYPES.forEach(g => { tracks[g] = generateTrack(g); });
+
+function togglePanelPause(g) {
+  pausedState[g] = !pausedState[g];
+  const panel = document.getElementById('panel-' + g);
+  const badge = document.getElementById('phase-' + g);
+  if (pausedState[g]) {
+    panel.classList.add('paused');
+    badge.textContent = '⏸ paused';
+    badge.style.background = 'rgba(255,255,255,0.1)';
+    badge.style.color = '#e8edf5';
+  } else {
+    panel.classList.remove('paused');
+    // Badge will be restored by next updateUI call
+  }
+}
+
+function initCanvas(g) {
+  const canvas = document.getElementById('canvas-' + g);
+  const W = canvas.parentElement.offsetWidth;
+  canvas.width = W;
+  canvas.height = 180;
+
+  const pts = deadReckoning(tracks[g].speeds, tracks[g].courses, W * 0.15, 90, 3.5);
+  const minX = Math.min(...pts.map(p => p.x));
+  const maxX = Math.max(...pts.map(p => p.x));
+  const minY = Math.min(...pts.map(p => p.y));
+  const maxY = Math.max(...pts.map(p => p.y));
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const rangeX = maxX - minX + 40, rangeY = maxY - minY + 40;
+  const sx = W / rangeX, sy = 180 / rangeY;
+  const sc = Math.min(sx, sy) * 0.85;
+  const ox = W / 2 - cx * sc, oy = 90 - cy * sc;
+
+  rawPts[g] = pts.map(p => ({ x: p.x * sc + ox, y: p.y * sc + oy }));
+}
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `${r},${g},${b}`;
+}
+
+function drawFrame(g, step) {
+  const canvas = document.getElementById('canvas-' + g);
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const pts = rawPts[g];
+  const color = COLORS[g];
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#060d1a';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 30) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 30) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+  if (step < 1) return;
+  const end = Math.min(step, pts.length - 1);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([3, 4]);
+  ctx.beginPath();
+  for (let i = 0; i < pts.length; i++) { i === 0 ? ctx.moveTo(pts[i].x, pts[i].y) : ctx.lineTo(pts[i].x, pts[i].y); }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  for (let i = 0; i < end; i++) {
+    const t = i / end;
+    ctx.strokeStyle = `rgba(${hexToRgb(color)},${0.2 + t * 0.6})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pts[i].x, pts[i].y);
+    ctx.lineTo(pts[i+1].x, pts[i+1].y);
+    ctx.stroke();
+    if (i % 6 === 0) {
+      ctx.fillStyle = `rgba(${hexToRgb(color)},${0.3 + t * 0.4})`;
+      ctx.beginPath();
+      ctx.arc(pts[i].x, pts[i].y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  const curr = pts[end];
+  const prev = end > 0 ? pts[end-1] : curr;
+  const angle = Math.atan2(curr.y - prev.y, curr.x - prev.x);
+
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(curr.x, curr.y, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.save();
+  ctx.translate(curr.x, curr.y);
+  ctx.rotate(angle);
+  const arrowLen = Math.max(4, tracks[g].speeds[Math.min(end, tracks[g].speeds.length-1)] * 2.5);
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(arrowLen, 0);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.beginPath();
+  ctx.moveTo(arrowLen + 4, 0);
+  ctx.lineTo(arrowLen - 2, -3);
+  ctx.lineTo(arrowLen - 2, 3);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(6,13,26,0.75)';
+  ctx.fillRect(0, H - 16, W, 16);
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.font = '9px DM Mono, monospace';
+  ctx.fillText(`ping ${end} / ${pts.length - 1}  ·  1 ping = 1 min`, 8, H - 4);
+}
+
+let steps = {};
+let playing = false;
+let animFrame = null;
+let lastTime = null;
+let msPerPing = 200;
+
+GEAR_TYPES.forEach(g => { steps[g] = 0; });
+
+function updateUI(g) {
+  if (pausedState[g]) return; // Don't update badge/desc while paused
+  const t = tracks[g];
+  const s = Math.min(steps[g], t.speeds.length - 1);
+  const totalPings = rawPts[g].length - 1;
+
+  document.getElementById('spd-' + g).textContent = t.speeds[s].toFixed(1) + ' kts';
+  document.getElementById('crs-' + g).textContent = ((t.courses[s] % 360 + 360) % 360).toFixed(0) + '°';
+
+  const phase = t.phases[s];
+  const isFishing = ['line soaking','towing net','setting net','pursing & hauling','gear soaking'].includes(phase);
+  document.getElementById('sts-' + g).textContent = isFishing ? '🎣 fishing' : '⛵ transit';
+  document.getElementById('sts-' + g).style.color = isFishing ? COLORS[g] : '#6b7fa3';
+
+  const badge = document.getElementById('phase-' + g);
+  badge.textContent = phase;
+  badge.style.background = isFishing ? `rgba(${hexToRgb(COLORS[g])},0.15)` : 'rgba(255,255,255,0.06)';
+  badge.style.color = isFishing ? COLORS[g] : '#6b7fa3';
+
+  document.getElementById('desc-' + g).textContent = t.descs[s];
+  document.getElementById('prog-' + g).style.width = (steps[g] / totalPings * 100).toFixed(1) + '%';
+}
+
+function tick(timestamp) {
+  if (!lastTime) lastTime = timestamp;
+  const elapsed = timestamp - lastTime;
+
+  if (elapsed >= msPerPing) {
+    lastTime = timestamp;
+    let allDone = true;
+    GEAR_TYPES.forEach(g => {
+      if (pausedState[g]) {
+        allDone = false; // Paused panels don't count as done
+        return;
+      }
+      if (steps[g] < rawPts[g].length - 1) {
+        steps[g]++;
+        allDone = false;
+      }
+      drawFrame(g, steps[g]);
+      updateUI(g);
+    });
+    if (allDone) {
+      playing = false;
+      document.getElementById('playBtn').textContent = '↺ Replay';
+      return;
+    }
+  }
+
+  animFrame = requestAnimationFrame(tick);
+}
+
+function togglePlay() {
+  const btn = document.getElementById('playBtn');
+  const allDone = GEAR_TYPES.every(g => pausedState[g] || steps[g] >= rawPts[g].length - 1);
+  if (allDone) { resetAll(); return; }
+
+  playing = !playing;
+  if (playing) {
+    btn.textContent = '⏸ Pause all';
+    lastTime = null;
+    animFrame = requestAnimationFrame(tick);
+  } else {
+    btn.textContent = '▶ Resume all';
+    cancelAnimationFrame(animFrame);
+  }
+}
+
+function resetAll() {
+  playing = false;
+  cancelAnimationFrame(animFrame);
+  GEAR_TYPES.forEach(g => {
+    steps[g] = 0;
+    pausedState[g] = false;
+    document.getElementById('panel-' + g).classList.remove('paused');
+    drawFrame(g, 0);
+  });
+  document.getElementById('playBtn').textContent = '▶ Play';
+  lastTime = null;
+}
+
+document.getElementById('speedSlider').addEventListener('input', function() {
+  const v = parseInt(this.value);
+  document.getElementById('speedLabel').textContent = v + '×';
+  msPerPing = Math.round(400 / v);
+});
+
+window.addEventListener('load', () => {
+  GEAR_TYPES.forEach(g => { initCanvas(g); drawFrame(g, 0); });
+});
+
+window.addEventListener('resize', () => {
+  GEAR_TYPES.forEach(g => { initCanvas(g); drawFrame(g, steps[g]); });
+});
+</script>
+</body>
+</html>
