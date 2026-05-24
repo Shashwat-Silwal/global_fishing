@@ -1,10 +1,8 @@
 import json
-import time
 
 import joblib
 import numpy as np
 import pandas as pd
-import pydeck as pdk
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
@@ -76,7 +74,6 @@ def predict_trip(df_trip, models, scaler, meta):
 
     X = df_trip[all_features].copy()
     X_scaled = scaler.transform(X)
-    X_scaled_df = pd.DataFrame(X_scaled, columns=all_features, index=X.index)
 
     results = {}
     for name, model in models.items():
@@ -84,7 +81,6 @@ def predict_trip(df_trip, models, scaler, meta):
             X_input = X_scaled  # numpy array — kNN and LR were fitted on this
         else:
             X_input = X  # DataFrame — RF and NB were fitted on this
-        # X_input = X_scaled_df if name in scaled_models else X
         labels = model.predict(X_input)
         probs = model.predict_proba(X_input)
         # prob of the predicted class
@@ -131,32 +127,6 @@ def build_replay_html(df_trip, preds, model_names, height=600):
     return html
 
 
-# def build_replay_html(df_trip, preds, model_names, height=600):
-#     # Ping data for JS
-#     pings = df_trip[["lat", "lon", "speed", "course", "is_fishing", "datetime"]].copy()
-#     pings["lat"] = pings["lat"].astype(float)
-#     pings["lon"] = pings["lon"].astype(float)
-#     pings["speed"] = pings["speed"].astype(float)
-#     pings["course"] = pings["course"].astype(float)
-#     pings["is_fishing"] = pings["is_fishing"].astype(int)
-#     pings["datetime"] = pings["datetime"].astype(str)
-#     pings_json = pings.to_json(orient="records")
-
-#     center_lat = float(df_trip["lat"].mean())
-#     center_lon = float(df_trip["lon"].mean())
-
-#     with open("replay_component.html", "r") as f:
-#         html = f.read()
-
-#     html = html.replace("'__PINGS__'", pings_json)
-#     html = html.replace("'__PREDS__'", json.dumps(preds))
-#     html = html.replace("'__MODEL_NAMES__'", json.dumps(model_names))
-#     html = html.replace("__CENTER_LAT__", str(center_lat))
-#     html = html.replace("__CENTER_LON__", str(center_lon))
-
-#     return html
-
-
 # ── Session state ──────────────────────────────────────────────────────────────
 for key, default in [
     ("last_trip", None),
@@ -168,7 +138,12 @@ for key, default in [
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
 tab_replay, tab_sim, tab_patterns, tab_region = st.tabs(
-    ["▶ Replay vessel track", "🎮 Manual simulator", "🐟 How vessels fish", "🌍 Ocean Region Predictor"]
+    [
+        "▶ Replay vessel track",
+        "🎮 Manual simulator",
+        "🐟 How vessels fish",
+        "🌍 Ocean Region Predictor",
+    ]
 )
 
 
@@ -192,7 +167,6 @@ with tab_replay:
         st.caption(f"{len(trips_for_gear)} trips available")
 
         selected_trip = st.selectbox("Trip", sorted(trips_for_gear))
-        # selected_model_name = st.selectbox("Highlight model", list(models.keys()))
 
         df_trip = (
             df_test[df_test["trip_id_global"] == selected_trip]
@@ -295,7 +269,14 @@ def train_region_model():
         df["gear_type"] = df["vessel_gear_type"]
 
     # Coerce arrow-backed types — only columns that actually exist in this file
-    for col in ["mmsi", "trip_id_global", "gear_type", "vessel_gear_type", "season_str", "source"]:
+    for col in [
+        "mmsi",
+        "trip_id_global",
+        "gear_type",
+        "vessel_gear_type",
+        "season_str",
+        "source",
+    ]:
         if col in df.columns:
             df[col] = df[col].astype(str)
     for col in ["is_fishing"]:
@@ -305,11 +286,20 @@ def train_region_model():
         if col in df.columns:
             df[col] = df[col].astype(int)
     for col in [
-        "speed", "course", "lat", "lon",
-        "distance_from_shore", "distance_from_port",
-        "speed_change_rate", "course_change_rate",
-        "speed_mean_10", "speed_std_10", "course_std_10",
-        "speed_mean_30", "speed_std_30", "course_std_30",
+        "speed",
+        "course",
+        "lat",
+        "lon",
+        "distance_from_shore",
+        "distance_from_port",
+        "speed_change_rate",
+        "course_change_rate",
+        "speed_mean_10",
+        "speed_std_10",
+        "course_std_10",
+        "speed_mean_30",
+        "speed_std_30",
+        "course_std_30",
     ]:
         if col in df.columns:
             df[col] = df[col].astype(float)
@@ -437,7 +427,9 @@ with tab_region:
     # ── Interactive predictor ──────────────────────────────────────────────
     st.divider()
     st.subheader("🔮 Predict a Vessel's Ocean Region")
-    st.markdown("Adjust the sliders to describe a vessel's behaviour, then predict which ocean region it most likely belongs to.")
+    st.markdown(
+        "Adjust the sliders to describe a vessel's behaviour, then predict which ocean region it most likely belongs to."
+    )
 
     col_l, col_r = st.columns(2)
 
@@ -453,11 +445,19 @@ with tab_region:
         p_course_std30 = st.slider("Course std (last 30 pings)", 0.0, 100.0, 30.0, 0.5)
 
     with col_r:
-        p_is_fishing = st.selectbox("Currently fishing?", [0, 1], format_func=lambda x: "Yes" if x else "No")
+        p_is_fishing = st.selectbox(
+            "Currently fishing?", [0, 1], format_func=lambda x: "Yes" if x else "No"
+        )
         p_dist_shore = st.slider("Distance from shore (m)", 0, 200_000, 50_000, 1_000)
         p_dist_port = st.slider("Distance from port (m)", 0, 500_000, 100_000, 5_000)
-        p_season = st.selectbox("Season", [0, 1, 2, 3], format_func=lambda x: ["Winter", "Spring", "Summer", "Autumn"][x])
-        p_gear = st.selectbox("Gear type", ["longliner", "fixed_gear", "purse_seine", "trawler"])
+        p_season = st.selectbox(
+            "Season",
+            [0, 1, 2, 3],
+            format_func=lambda x: ["Winter", "Spring", "Summer", "Autumn"][x],
+        )
+        p_gear = st.selectbox(
+            "Gear type", ["longliner", "fixed_gear", "purse_seine", "trawler"]
+        )
 
         gear_vec = {
             "gear_longliner": float(p_gear == "longliner"),
@@ -466,22 +466,26 @@ with tab_region:
             "gear_trawler": float(p_gear == "trawler"),
         }
 
-        X_pred = pd.DataFrame([{
-            "speed": p_speed,
-            "speed_change_rate": p_speed_change,
-            "course_change_rate": p_course_change,
-            "speed_mean_10": p_speed_mean,
-            "speed_std_10": p_speed_std,
-            "course_std_10": p_course_std,
-            "speed_mean_30": p_speed_mean30,
-            "speed_std_30": p_speed_std30,
-            "course_std_30": p_course_std30,
-            "is_fishing": p_is_fishing,
-            "distance_from_shore": p_dist_shore,
-            "distance_from_port": p_dist_port,
-            "season": p_season,
-            **gear_vec,
-        }])[REGION_FEATURES]
+        X_pred = pd.DataFrame(
+            [
+                {
+                    "speed": p_speed,
+                    "speed_change_rate": p_speed_change,
+                    "course_change_rate": p_course_change,
+                    "speed_mean_10": p_speed_mean,
+                    "speed_std_10": p_speed_std,
+                    "course_std_10": p_course_std,
+                    "speed_mean_30": p_speed_mean30,
+                    "speed_std_30": p_speed_std30,
+                    "course_std_30": p_course_std30,
+                    "is_fishing": p_is_fishing,
+                    "distance_from_shore": p_dist_shore,
+                    "distance_from_port": p_dist_port,
+                    "season": p_season,
+                    **gear_vec,
+                }
+            ]
+        )[REGION_FEATURES]
 
         pred_region = rf_region.predict(X_pred)[0]
         pred_proba = rf_region.predict_proba(X_pred)[0]
@@ -498,10 +502,12 @@ with tab_region:
 
         # Probability bars
         st.markdown("**Confidence per region**")
-        prob_df = pd.DataFrame({
-            "Region": class_order,
-            "Probability": pred_proba,
-        }).sort_values("Probability", ascending=True)
+        prob_df = pd.DataFrame(
+            {
+                "Region": class_order,
+                "Probability": pred_proba,
+            }
+        ).sort_values("Probability", ascending=True)
         fig_prob = px.bar(
             prob_df,
             x="Probability",
@@ -523,67 +529,114 @@ with tab_region:
     map_rows = []
     for region, (lat, lon) in REGION_COORDS.items():
         is_pred = region == pred_region
-        map_rows.append({
-            "Region": region,
-            "lat": lat,
-            "lon": lon,
-            "size": 40 if is_pred else 15,
-            "opacity": 1.0 if is_pred else 0.35,
-            "label": f"{'▶ ' if is_pred else ''}{region}",
-        })
+        map_rows.append(
+            {
+                "Region": region,
+                "lat": lat,
+                "lon": lon,
+                "size": 40 if is_pred else 15,
+                "opacity": 1.0 if is_pred else 0.35,
+                "label": f"{'▶ ' if is_pred else ''}{region}",
+            }
+        )
     map_df = pd.DataFrame(map_rows)
 
     fig_map = go.Figure()
 
     # Draw quadrant shading rectangles
     quad_shapes = [
-        dict(type="rect", x0=0,    y0=0,   x1=180,  y1=90,  fillcolor=REGION_COLORS["North-East"], opacity=0.12, line_width=0),
-        dict(type="rect", x0=-180, y0=0,   x1=0,    y1=90,  fillcolor=REGION_COLORS["North-West"], opacity=0.12, line_width=0),
-        dict(type="rect", x0=0,    y0=-90, x1=180,  y1=0,   fillcolor=REGION_COLORS["South-East"], opacity=0.12, line_width=0),
-        dict(type="rect", x0=-180, y0=-90, x1=0,    y1=0,   fillcolor=REGION_COLORS["South-West"], opacity=0.12, line_width=0),
+        dict(
+            type="rect",
+            x0=0,
+            y0=0,
+            x1=180,
+            y1=90,
+            fillcolor=REGION_COLORS["North-East"],
+            opacity=0.12,
+            line_width=0,
+        ),
+        dict(
+            type="rect",
+            x0=-180,
+            y0=0,
+            x1=0,
+            y1=90,
+            fillcolor=REGION_COLORS["North-West"],
+            opacity=0.12,
+            line_width=0,
+        ),
+        dict(
+            type="rect",
+            x0=0,
+            y0=-90,
+            x1=180,
+            y1=0,
+            fillcolor=REGION_COLORS["South-East"],
+            opacity=0.12,
+            line_width=0,
+        ),
+        dict(
+            type="rect",
+            x0=-180,
+            y0=-90,
+            x1=0,
+            y1=0,
+            fillcolor=REGION_COLORS["South-West"],
+            opacity=0.12,
+            line_width=0,
+        ),
     ]
     # Highlight predicted quadrant more strongly
     pred_coords = {
-        "North-East": dict(x0=0,    y0=0,   x1=180,  y1=90),
-        "North-West": dict(x0=-180, y0=0,   x1=0,    y1=90),
-        "South-East": dict(x0=0,    y0=-90, x1=180,  y1=0),
-        "South-West": dict(x0=-180, y0=-90, x1=0,    y1=0),
+        "North-East": dict(x0=0, y0=0, x1=180, y1=90),
+        "North-West": dict(x0=-180, y0=0, x1=0, y1=90),
+        "South-East": dict(x0=0, y0=-90, x1=180, y1=0),
+        "South-West": dict(x0=-180, y0=-90, x1=0, y1=0),
     }[pred_region]
-    quad_shapes.append(dict(
-        type="rect", **pred_coords,
-        fillcolor=REGION_COLORS[pred_region], opacity=0.25,
-        line=dict(color=REGION_COLORS[pred_region], width=2),
-    ))
+    quad_shapes.append(
+        dict(
+            type="rect",
+            **pred_coords,
+            fillcolor=REGION_COLORS[pred_region],
+            opacity=0.25,
+            line=dict(color=REGION_COLORS[pred_region], width=2),
+        )
+    )
 
     # One scatter trace per region for correct legend colours
     for _, row in map_df.iterrows():
         is_pred = row["Region"] == pred_region
-        fig_map.add_trace(go.Scattergeo(
-            lon=[row["lon"]],
-            lat=[row["lat"]],
-            mode="markers+text",
-            marker=dict(
-                size=row["size"],
-                color=REGION_COLORS[row["Region"]],
-                opacity=row["opacity"],
-                line=dict(width=2 if is_pred else 0, color="white"),
-            ),
-            text=row["label"],
-            textposition="bottom center",
-            textfont=dict(
-                size=12 if is_pred else 10,
-                color=REGION_COLORS[row["Region"]],
-            ),
-            name=row["Region"],
-            showlegend=False,
-        ))
+        fig_map.add_trace(
+            go.Scattergeo(
+                lon=[row["lon"]],
+                lat=[row["lat"]],
+                mode="markers+text",
+                marker=dict(
+                    size=row["size"],
+                    color=REGION_COLORS[row["Region"]],
+                    opacity=row["opacity"],
+                    line=dict(width=2 if is_pred else 0, color="white"),
+                ),
+                text=row["label"],
+                textposition="bottom center",
+                textfont=dict(
+                    size=12 if is_pred else 10,
+                    color=REGION_COLORS[row["Region"]],
+                ),
+                name=row["Region"],
+                showlegend=False,
+            )
+        )
 
     fig_map.update_layout(
         shapes=quad_shapes,
         geo=dict(
-            showland=True, landcolor="#1a2035",
-            showocean=True, oceancolor="#0a1020",
-            showcoastlines=True, coastlinecolor="#2a3a5a",
+            showland=True,
+            landcolor="#1a2035",
+            showocean=True,
+            oceancolor="#0a1020",
+            showcoastlines=True,
+            coastlinecolor="#2a3a5a",
             showframe=False,
             bgcolor="#080f1e",
             projection_type="natural earth",
