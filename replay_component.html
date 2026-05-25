@@ -404,6 +404,8 @@ document.getElementById('pause-btn').addEventListener('click', function() {
     document.getElementById('val-speed').textContent    = '\u2014.\u2014 kts';
     document.getElementById('val-course').textContent   = '\u2014\u2014\u2014\u00b0';
     document.getElementById('val-datetime').textContent = '\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014 \u2014\u2014:\u2014\u2014';
+    document.getElementById('progress-fill').style.width = '0%';
+    document.getElementById('ping-counter').textContent  = '0 / ' + PINGS.length;
     const truthEl = document.getElementById('val-truth');
     truthEl.textContent = '\u2014';
     truthEl.className   = 'truth-badge';
@@ -454,7 +456,6 @@ document.getElementById('reset-btn').addEventListener('click', function() {
     document.getElementById('prec-' + id).textContent = '\u2014';
     document.getElementById('rec-'  + id).textContent = '\u2014';
     document.getElementById('bacc-' + id).textContent = '\u2014';    
-    document.getElementById('ping-counter').textContent = 0 + ' / ' + PINGS.length;
     document.getElementById('bar-' + id).style.width = '0%';
     document.getElementById('bar-' + id).className = 'prob-fill';    
     const pctEl = document.getElementById('acc-pct-' + id);
@@ -464,6 +465,8 @@ document.getElementById('reset-btn').addEventListener('click', function() {
   document.getElementById('val-speed').textContent    = '\u2014.\u2014 kts';
   document.getElementById('val-course').textContent   = '\u2014\u2014\u2014\u00b0';
   document.getElementById('val-datetime').textContent = '\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014 \u2014\u2014:\u2014\u2014';
+  document.getElementById('progress-fill').style.width = '0%';
+  document.getElementById('ping-counter').textContent  = '0 / ' + PINGS.length;
   const truthEl = document.getElementById('val-truth');
   truthEl.textContent = '\u2014';
   truthEl.className   = 'truth-badge';  
