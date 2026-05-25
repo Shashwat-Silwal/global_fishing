@@ -256,14 +256,13 @@ function tick(timestamp) {
     stepProgress -= 1.0;
     currentStep++;
 
-    // Place a dot at the ping we just completed travelling FROM
-    const arrived = PINGS[currentStep - 1];
+    const arrived = PINGS[currentStep];  // ping just arrived at
     L.circleMarker([arrived.lat, arrived.lon], {
       radius: 4,
       color: 'transparent',
       fillColor: arrived.is_fishing === 1 ? FISHING_COLOR : TRANSIT_COLOR,
       fillOpacity: 0.85
-    }).addTo(pingLayer);
+    }).addTo(pingLayer);    
   }
 
   // End of trip — pause then loop
@@ -429,6 +428,9 @@ document.getElementById('reset-btn').addEventListener('click', function() {
   pingLayer.clearLayers();
   trackLine.setLatLngs([]);
   currentMarker.setLatLng([PINGS[0].lat, PINGS[0].lon]);
+  if (followVessel) {
+    map.setView([PINGS[0].lat, PINGS[0].lon], map.getZoom());
+  }  
   document.getElementById('pause-btn').textContent = '▶ Play';
   MODEL_NAMES.forEach(name => {
     tp[name] = 0;
