@@ -289,7 +289,7 @@ with tab_replay:
         preds = st.session_state.preds_cache
 
         with st.spinner("Loading map..."):
-            map_height = 800
+            map_height = 700
             html = build_replay_html(
                 df_trip,
                 preds,
