@@ -1,0 +1,34 @@
+{
+  "base_features": [
+    "speed_change_rate",
+    "course_change_rate",
+    "speed_mean_10",
+    "speed_std_10",
+    "course_std_10"
+  ],
+  "gear_cols": [
+    "gear_type_fixed_gear",
+    "gear_type_longliner",
+    "gear_type_purse_seine",
+    "gear_type_trawler"
+  ],
+  "all_features": [
+    "speed_change_rate",
+    "course_change_rate",
+    "speed_mean_10",
+    "speed_std_10",
+    "course_std_10",
+    "gear_type_fixed_gear",
+    "gear_type_longliner",
+    "gear_type_purse_seine",
+    "gear_type_trawler"
+  ],
+  "scaled_models": [
+    "knn_gear",
+    "lr_gear"
+  ],
+  "unscaled_models": [
+    "rf_gear",
+    "nb_gear"
+  ]
+}
