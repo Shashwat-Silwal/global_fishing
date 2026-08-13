@@ -205,11 +205,12 @@ for key, default in [
 
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab_replay, tab_patterns, tab_region = st.tabs(
+tab_replay, tab_patterns, tab_region, tab_fishing = st.tabs(
     [
         "▶ Replay vessel track",
         "🐟 How vessels fish",
         "🌍 Ocean Region Predictor",
+        "🎣 Fishing Activity Predictor",
     ]
 )
 
@@ -736,3 +737,136 @@ with tab_region:
         height=320,
     )
     st.plotly_chart(fig_map, width="stretch")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — FISHING ACTIVITY PREDICTOR
+# ══════════════════════════════════════════════════════════════════════════════
+
+FISHING_STATE_COLORS = {"Fishing": "#e74c3c", "Transiting": "#0984e3"}
+
+GEAR_COL_MAP = {
+    "fixed_gear": "gear_type_fixed_gear",
+    "longliner": "gear_type_longliner",
+    "purse_seine": "gear_type_purse_seine",
+    "trawler": "gear_type_trawler",
+}
+
+with tab_fishing:
+    st.subheader("🎣 Is This Vessel Fishing Right Now?")
+    st.markdown(
+        "Describe a vessel's recent movement behaviour and gear type — each of the "
+        "four trained models will classify the current ping as **Fishing** or "
+        "**Transiting**, using the same features they were trained on."
+    )
+
+    col_l, col_r = st.columns(2)
+
+    with col_l:
+        st.markdown("**Movement behaviour**")
+        f_speed_change = st.slider(
+            "Speed change rate (knots/min)", -5.0, 5.0, 0.0, 0.1, key="f_speed_change"
+        )
+        f_course_change = st.slider(
+            "Course change rate (°/min)", -30.0, 30.0, 0.0, 0.5, key="f_course_change"
+        )
+        f_speed_mean = st.slider(
+            "Speed mean (last 10 pings, knots)", 0.0, 20.0, 4.5, 0.1, key="f_speed_mean"
+        )
+        f_speed_std = st.slider(
+            "Speed std (last 10 pings)", 0.0, 10.0, 0.8, 0.1, key="f_speed_std"
+        )
+        f_course_std = st.slider(
+            "Course std (last 10 pings, °)", 0.0, 100.0, 30.0, 0.5, key="f_course_std"
+        )
+
+    with col_r:
+        st.markdown("**Vessel**")
+        f_gear = st.selectbox(
+            "Gear type",
+            options=list(GEAR_COL_MAP.keys()),
+            format_func=lambda g: GEAR_LABELS.get(g, g),
+            key="f_gear",
+        )
+
+        gear_vec = {col: 0.0 for col in GEAR_COL_MAP.values()}
+        gear_vec[GEAR_COL_MAP[f_gear]] = 1.0
+
+        X_fish = pd.DataFrame(
+            [
+                {
+                    "speed_change_rate": f_speed_change,
+                    "course_change_rate": f_course_change,
+                    "speed_mean_10": f_speed_mean,
+                    "speed_std_10": f_speed_std,
+                    "course_std_10": f_course_std,
+                    **gear_vec,
+                }
+            ]
+        )[meta["all_features"]]
+
+        X_fish_scaled = scaler.transform(X_fish)
+        scaled_models = {"kNN", "Logistic Regression"}
+
+        fish_results = {}
+        for name, model in models.items():
+            X_in = X_fish_scaled if name in scaled_models else X_fish
+            label = int(model.predict(X_in)[0])
+            proba = model.predict_proba(X_in)[0]
+            classes = list(model.classes_)
+            p_fishing = float(proba[classes.index(1)]) if 1 in classes else 0.0
+            fish_results[name] = {"label": label, "p_fishing": p_fishing}
+
+        votes_fishing = sum(1 for r in fish_results.values() if r["label"] == 1)
+        consensus = "Fishing" if votes_fishing >= 2 else "Transiting"
+        avg_p_fishing = np.mean([r["p_fishing"] for r in fish_results.values()])
+
+        st.markdown("### Consensus prediction")
+        color = FISHING_STATE_COLORS[consensus]
+        st.markdown(
+            f"<div style='background:{color};padding:16px;border-radius:10px;"
+            f"text-align:center;color:white;font-size:1.4em;font-weight:bold'>"
+            f"{'🎣' if consensus == 'Fishing' else '🧭'} {consensus} "
+            f"({votes_fishing}/4 models agree)</div>",
+            unsafe_allow_html=True,
+        )
+        st.caption(f"Average P(fishing) across models: {avg_p_fishing:.0%}")
+
+    # ── Per-model breakdown ─────────────────────────────────────────────────
+    st.divider()
+    st.markdown("**Per-model breakdown**")
+
+    breakdown_df = pd.DataFrame(
+        [
+            {
+                "Model": name,
+                "Prediction": "Fishing" if r["label"] == 1 else "Transiting",
+                "P(fishing)": r["p_fishing"],
+            }
+            for name, r in fish_results.items()
+        ]
+    ).sort_values("P(fishing)", ascending=True)
+
+    fig_fish = px.bar(
+        breakdown_df,
+        x="P(fishing)",
+        y="Model",
+        orientation="h",
+        color="Prediction",
+        color_discrete_map=FISHING_STATE_COLORS,
+        height=280,
+        text=breakdown_df["P(fishing)"].map(lambda v: f"{v:.0%}"),
+    )
+    fig_fish.update_layout(
+        margin=dict(t=10, b=10, l=0, r=0),
+        xaxis=dict(range=[0, 1], title="P(fishing)"),
+        yaxis_title="",
+        legend_title_text="",
+    )
+    st.plotly_chart(fig_fish, width="stretch")
+
+    st.caption(
+        "kNN and Logistic Regression run on the scaled feature set; "
+        "Random Forest and Naive Bayes run on the raw feature set — "
+        "matching how each was trained."
+    )
