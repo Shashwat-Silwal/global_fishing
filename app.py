@@ -817,29 +817,46 @@ with tab_fishing:
             p_fishing = float(proba[classes.index(1)]) if 1 in classes else 0.0
             fish_results[name] = {"label": label, "p_fishing": p_fishing}
 
-        votes_fishing = sum(1 for r in fish_results.values() if r["label"] == 1)
-        consensus = "Fishing" if votes_fishing >= 2 else "Transiting"
-        avg_p_fishing = np.mean([r["p_fishing"] for r in fish_results.values()])
+        # Headline call comes from Random Forest — the strongest model on the
+        # held-out test set (88% accuracy, F1 0.870, vs 0.852 for kNN and
+        # substantially lower for LR/Naive Bayes — see notebook Q2 findings).
+        BEST_MODEL = "Random Forest"
+        best = fish_results[BEST_MODEL]
+        consensus = "Fishing" if best["label"] == 1 else "Transiting"
+        agree_count = sum(
+            1
+            for r in fish_results.values()
+            if r["label"] == best["label"]
+        )
 
-        st.markdown("### Consensus prediction")
+        st.markdown("### Prediction")
         color = FISHING_STATE_COLORS[consensus]
         st.markdown(
             f"<div style='background:{color};padding:16px;border-radius:10px;"
             f"text-align:center;color:white;font-size:1.4em;font-weight:bold'>"
-            f"{'🎣' if consensus == 'Fishing' else '🧭'} {consensus} "
-            f"({votes_fishing}/4 models agree)</div>",
+            f"{'🎣' if consensus == 'Fishing' else '🧭'} {consensus}</div>",
             unsafe_allow_html=True,
         )
-        st.caption(f"Average P(fishing) across models: {avg_p_fishing:.0%}")
+        st.caption(
+            f"Based on **{BEST_MODEL}** (88% accuracy, F1 0.870 — the "
+            f"best-performing model on the test set) · "
+            f"P(fishing) = {best['p_fishing']:.0%} · "
+            f"{agree_count}/4 models agree"
+        )
 
     # ── Per-model breakdown ─────────────────────────────────────────────────
     st.divider()
-    st.markdown("**Per-model breakdown**")
+    st.markdown("**How the other models see it**")
+    st.caption(
+        "The headline call above uses Random Forest only. These are shown for "
+        "context — weaker models (Naive Bayes, Logistic Regression) rely more "
+        "heavily on gear type and are more prone to disagreeing on borderline inputs."
+    )
 
     breakdown_df = pd.DataFrame(
         [
             {
-                "Model": name,
+                "Model": f"{name} ★" if name == BEST_MODEL else name,
                 "Prediction": "Fishing" if r["label"] == 1 else "Transiting",
                 "P(fishing)": r["p_fishing"],
             }
@@ -866,7 +883,7 @@ with tab_fishing:
     st.plotly_chart(fig_fish, width="stretch")
 
     st.caption(
-        "kNN and Logistic Regression run on the scaled feature set; "
-        "Random Forest and Naive Bayes run on the raw feature set — "
-        "matching how each was trained."
+        "★ = model used for the headline prediction. kNN and Logistic Regression "
+        "run on the scaled feature set; Random Forest and Naive Bayes run on the "
+        "raw feature set — matching how each was trained."
     )
