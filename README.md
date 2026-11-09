@@ -61,4 +61,4 @@ The app will open automatically in your browser at `http://localhost:8501`
 - **Models are Q2 variants**: All models were trained with gear type dummy variables as additional features alongside the kinematic and temporal features.
 - **Test set only**: The app displays trips from the notebook's held-out test set only, ensuring no trip shown was used during model training. Additionally, only trips with a combination of fishing and non-fishing activity is present are shown ("interesting" trips)
 - **Live deployment**: The app is also deployed at: https://297201-2026-gfw.streamlit.app
-
+https://global-fishing.streamlit.app/
